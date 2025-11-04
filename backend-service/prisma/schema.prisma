@@ -1,9 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -13,87 +7,84 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model Org {
-  id                  BigInt    @id @default(autoincrement())
+model notification_logs {
+  id              BigInt         @id @default(autoincrement())
+  org_id          BigInt?
+  subscription_id BigInt?
+  channel         String
+  to_address      String
+  type            String
+  status          String
+  provider_msg_id String?
+  error_message   String?
+  payload         Json?
+  created_at      DateTime       @default(now()) @db.Timestamptz(6)
+  sent_at         DateTime?      @db.Timestamptz(6)
+  orgs            orgs?          @relation(fields: [org_id], references: [id], onUpdate: NoAction)
+  subscriptions   subscriptions? @relation(fields: [subscription_id], references: [id], onUpdate: NoAction)
+}
+
+model orgs {
+  id                  BigInt              @id @default(autoincrement())
   name                String
-  timezone            String    @default("Asia/Kolkata")
-  contactPhone        String? 
-  contactEmail        String?
-  totalTables         Int       @default(0)
-  defaultMonthlyFee   BigInt    @default(0) // in paise
-  createdAt           DateTime  @default(now())
-  updatedAt           DateTime  @updatedAt
-
-  subscribers         Subscriber[]
-  subscriptions       Subscription[]
-  payments            Payment[]
-  notificationLogs    NotificationLog[]
+  timezone            String              @default("Asia/Kolkata")
+  contact_phone       String?
+  contact_email       String?
+  total_tables        Int                 @default(0)
+  default_monthly_fee BigInt              @default(0)
+  created_at          DateTime            @default(now()) @db.Timestamptz(6)
+  updated_at          DateTime            @default(now()) @db.Timestamptz(6)
+  notification_logs   notification_logs[]
+  payments            payments[]
+  subscribers         subscribers[]
+  subscriptions       subscriptions[]
 }
 
-model Subscriber {
-  id         BigInt    @id @default(autoincrement())
-  org        Org       @relation(fields: [orgId], references: [id], onDelete: Cascade)
-  orgId      BigInt
-  phone      String
-  name       String?
-  email      String?
-  createdAt  DateTime  @default(now())
-  updatedAt  DateTime  @updatedAt
+model payments {
+  id              BigInt         @id @default(autoincrement())
+  org_id          BigInt
+  subscription_id BigInt?
+  amount          BigInt
+  currency        String         @default("INR")
+  method          String?
+  txn_id          String?
+  paid_at         DateTime       @default(now()) @db.Timestamptz(6)
+  created_at      DateTime       @default(now()) @db.Timestamptz(6)
+  orgs            orgs           @relation(fields: [org_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  subscriptions   subscriptions? @relation(fields: [subscription_id], references: [id], onUpdate: NoAction)
 
-  subscriptions Subscription[]
-
-  @@unique([orgId, phone])
+  @@index([subscription_id], map: "idx_payments_subscription")
 }
 
-model Subscription {
-  id              BigInt    @id @default(autoincrement())
-  org             Org       @relation(fields: [orgId], references: [id], onDelete: Cascade)
-  orgId           BigInt
-  subscriber      Subscriber @relation(fields: [subscriberId], references: [id], onDelete: Cascade)
-  subscriberId    BigInt
-  startDate       DateTime
-  endDate         DateTime
-  status          String    @default("active") // active | expired | cancelled
-  autoRenew       Boolean   @default(false)
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+model subscribers {
+  id            BigInt          @id @default(autoincrement())
+  org_id        BigInt
+  phone         String
+  name          String?
+  email         String?
+  created_at    DateTime        @default(now()) @db.Timestamptz(6)
+  updated_at    DateTime        @default(now()) @db.Timestamptz(6)
+  orgs          orgs            @relation(fields: [org_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  subscriptions subscriptions[]
 
-  payments        Payment[]
-  notificationLogs NotificationLog[]
-
-  @@index([orgId, endDate])
-  @@index([orgId, status])
+  @@unique([org_id, phone])
 }
 
-model Payment {
-  id             BigInt    @id @default(autoincrement())
-  org            Org       @relation(fields: [orgId], references: [id], onDelete: Cascade)
-  orgId          BigInt
-  subscription   Subscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
-  subscriptionId BigInt?
-  amount         BigInt
-  currency       String    @default("INR")
-  method         String?
-  txnId          String?
-  paidAt         DateTime  @default(now())
-  createdAt      DateTime  @default(now())
+model subscriptions {
+  id                BigInt              @id @default(autoincrement())
+  org_id            BigInt
+  subscriber_id     BigInt
+  start_date        DateTime            @db.Timestamptz(6)
+  end_date          DateTime            @db.Timestamptz(6)
+  status            String              @default("active")
+  auto_renew        Boolean             @default(false)
+  created_at        DateTime            @default(now()) @db.Timestamptz(6)
+  updated_at        DateTime            @default(now()) @db.Timestamptz(6)
+  notification_logs notification_logs[]
+  payments          payments[]
+  orgs              orgs                @relation(fields: [org_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  subscribers       subscribers         @relation(fields: [subscriber_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
-  @@index([subscriptionId])
-}
-
-model NotificationLog {
-  id             BigInt   @id @default(autoincrement())
-  org            Org?     @relation(fields: [orgId], references: [id], onDelete: SetNull)
-  orgId          BigInt?
-  subscription   Subscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
-  subscriptionId BigInt?
-  channel        String
-  toAddress      String
-  type           String
-  status         String
-  providerMsgId  String?
-  errorMessage   String?
-  payload        Json?
-  createdAt      DateTime @default(now())
-  sentAt         DateTime?
+  @@index([org_id, end_date], map: "idx_subscriptions_org_enddate")
+  @@index([org_id, status], map: "idx_subscriptions_org_status")
 }
